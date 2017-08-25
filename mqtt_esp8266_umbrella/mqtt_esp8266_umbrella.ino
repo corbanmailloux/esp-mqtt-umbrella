@@ -17,8 +17,8 @@ const bool debug_mode = CONFIG_DEBUG;
 const int servoPin = CONFIG_PIN_SERVO;
 const int txPin = BUILTIN_LED; // On-board blue LED
 
-const int servoMin = CONFIG_SERVO_DOWN;
-const int servoMax = CONFIG_SERVO_UP;
+const int servoDown = CONFIG_SERVO_DOWN;
+const int servoUp = CONFIG_SERVO_UP;
 
 const char* ssid = CONFIG_WIFI_SSID;
 const char* password = CONFIG_WIFI_PASS;
@@ -42,7 +42,7 @@ void setup() {
   digitalWrite(txPin, HIGH); // Turn off the on-board LED
 
   servo.attach(servoPin);
-  servo.write(servoMin);
+  servo.write(servoDown);
 
   if (debug_mode) {
     Serial.begin(115200);
@@ -86,10 +86,11 @@ void callback(char* topic, byte* payload, unsigned int length) {
   }
 
   Serial.println(payloadString);
-  int newValue = payloadString.toInt();
+  int newValue = constrain(payloadString.toInt(), 0, 100);
   payloadString = "";
-  int scaled = map(newValue, 0, 100, servoMin, servoMax);
+  int scaled = map(newValue, 0, 100, servoDown, servoUp);
   servo.write(scaled);
+  // servo.write(newValue);
   Serial.println(scaled);
 }
 

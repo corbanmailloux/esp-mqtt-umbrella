@@ -2,6 +2,11 @@
  * ESP8266 MQTT Umbrella to indicate the chance of rain for Home Assistant.
  */
 
+ #include "FastLED.h" // FastLED library: https://github.com/FastLED/FastLED
+ #if FASTLED_VERSION < 3001000
+ #error "Requires FastLED 3.1 or later; check github for latest code."
+ #endif
+
 // Set configuration options for pins, WiFi, and MQTT in the following file:
 #include "config.h"
 
@@ -12,13 +17,20 @@ Servo servo;
 // http://pubsubclient.knolleary.net/
 #include <PubSubClient.h>
 
+// Bring in the config.h options
 const bool debug_mode = CONFIG_DEBUG;
 
 const int servoPin = CONFIG_PIN_SERVO;
 const int txPin = BUILTIN_LED; // On-board blue LED
+const int ledPin = CONFIG_PIN_LED;
+
+const int fadeSpeed = CONFIG_FADE_SPEED;
+const int maxBrightness = 100;
+const int numLEDs = CONFIG_NUM_LEDS;
 
 const int servoDown = CONFIG_SERVO_DOWN;
 const int servoUp = CONFIG_SERVO_UP;
+const int servoDetachDelay = 1000; // in MS
 
 const char* ssid = CONFIG_WIFI_SSID;
 const char* password = CONFIG_WIFI_PASS;
@@ -30,19 +42,36 @@ const char* client_id = CONFIG_MQTT_CLIENT_ID;
 
 const char* mqtt_topic = CONFIG_MQTT_TOPIC;
 
+// Globals
 String payloadString = "";
+struct CRGB leds[numLEDs];
+// Color palette
+CRGBPalette16 currentPalette = OceanColors_p;
+int colorIndex;
+bool dripLeft = true;
+bool dripRight = true;
+
+#define GRAVITY 9.81 // Acceleration of gravity in m/s^2
+#define h0 4 // Starting height, in meters, of the drip
+long lastDripStart; // millis() the last drip started falling
+long servoAttachTime;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 void setup() {
-  // pinMode(redPin, OUTPUT);
+  // pinMode(txPin, OUTPUT);
+  // digitalWrite(txPin, HIGH); // Turn off the on-board LED
 
-  pinMode(txPin, OUTPUT);
-  digitalWrite(txPin, HIGH); // Turn off the on-board LED
+  delay(1000);
 
   servo.attach(servoPin);
   servo.write(servoDown);
+
+  LEDS.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(TypicalLEDStrip);
+
+  FastLED.setBrightness(maxBrightness);
+  FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
 
   if (debug_mode) {
     Serial.begin(115200);
@@ -79,6 +108,8 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(topic);
   Serial.print("] ");
 
+  servo.attach(servoPin);
+
   for (int i = 0; i < length; i++) {
     if (isDigit(payload[i])) {
       payloadString += (char)payload[i];
@@ -90,6 +121,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   payloadString = "";
   int scaled = map(newValue, 0, 100, servoDown, servoUp);
   servo.write(scaled);
+  servoAttachTime = millis();
   // servo.write(newValue);
   Serial.println(scaled);
 }
@@ -117,4 +149,51 @@ void loop() {
     reconnect();
   }
   client.loop();
+
+  EVERY_N_MILLISECONDS(30) { // Non-blocking rate-limiting for the updates.
+    ripple();
+    FastLED.show();
+  }
+
+  if (millis() - servoAttachTime > servoDetachDelay) {
+    servo.detach();
+  }
+}
+
+void ripple() {
+  int numSideLed = 9;
+
+  fadeToBlackBy(leds, numLEDs, fadeSpeed); // 8 bit, 1 = slow, 255 = fast
+
+  long tCycle = millis() - lastDripStart;
+
+  // A little kinematics equation calculates positon as a function of time and acceleration (gravity)
+  float h = 0.5 * GRAVITY * pow(tCycle/1000.0, 2.0);
+  int pos = round(h * (numSideLed - 1) / h0); // Map "h" to a "pos" integer index position on the LED strip
+
+  if (pos >= numSideLed + (numSideLed / 3) || pos < 0) {
+    colorIndex = random8();
+    dripLeft = randBool();
+    dripRight = randBool();
+    delay(random(30, 150));
+    lastDripStart = millis();
+    return;
+  } else if (pos >= numSideLed) {
+    // Let's overshoot a bit (to let the lights fade)
+    return;
+  }
+
+  float calcBrightnes = 255.0 / pos; // Drop off the brightness
+
+  if (dripLeft) {
+    leds[(numLEDs - pos) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
+  }
+
+  if (dripRight) {
+    leds[(numLEDs + pos) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
+  }
+}
+
+bool randBool() {
+  return (random(10) < 5); // 5 is 50-50
 }

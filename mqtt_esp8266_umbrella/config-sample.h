@@ -6,7 +6,7 @@
  */
 
 // Pins
-#define CONFIG_PIN_SERVO D4
+#define CONFIG_PIN_SERVO D2
 #define CONFIG_PIN_LED 7
 
 // Servo angles

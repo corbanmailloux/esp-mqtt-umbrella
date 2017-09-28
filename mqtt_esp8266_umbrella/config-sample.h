@@ -7,11 +7,11 @@
 
 // Pins
 #define CONFIG_PIN_SERVO D2
-#define CONFIG_PIN_LED 7
+#define CONFIG_PIN_LED D1
 
 // Servo angles
-#define CONFIG_SERVO_DOWN 100
-#define CONFIG_SERVO_UP 150
+#define CONFIG_SERVO_DOWN 8
+#define CONFIG_SERVO_UP 73
 
 // FastLED configuration
 #define CONFIG_COLOR_ORDER GRB

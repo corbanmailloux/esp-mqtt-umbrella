@@ -25,8 +25,9 @@ const int txPin = BUILTIN_LED; // On-board blue LED
 const int ledPin = CONFIG_PIN_LED;
 
 const int fadeSpeed = CONFIG_FADE_SPEED;
-const int maxBrightness = 100;
+const int maxBrightness = 255;
 const int numLEDs = CONFIG_NUM_LEDS;
+const int ledOffset = 3; // Move the center by this many places. Useful if the ring isn't oriented correctly.
 
 const int servoDown = CONFIG_SERVO_DOWN;
 const int servoUp = CONFIG_SERVO_UP;
@@ -155,6 +156,7 @@ void loop() {
     FastLED.show();
   }
 
+  // Turn off the servo after a short time. Otherwise, the cheap servo buzzes.
   if (millis() - servoAttachTime > servoDetachDelay) {
     servo.detach();
   }
@@ -172,6 +174,7 @@ void ripple() {
   int pos = round(h * (numSideLed - 1) / h0); // Map "h" to a "pos" integer index position on the LED strip
 
   if (pos >= numSideLed + (numSideLed / 3) || pos < 0) {
+    // Reset the values for the next drip
     colorIndex = random8();
     dripLeft = randBool();
     dripRight = randBool();
@@ -186,11 +189,11 @@ void ripple() {
   float calcBrightnes = 255.0 / pos; // Drop off the brightness
 
   if (dripLeft) {
-    leds[(numLEDs - pos) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
+    leds[(numLEDs - pos + ledOffset) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
   }
 
   if (dripRight) {
-    leds[(numLEDs + pos) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
+    leds[(numLEDs + pos + ledOffset) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
   }
 }
 

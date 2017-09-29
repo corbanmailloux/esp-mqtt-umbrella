@@ -2,10 +2,10 @@
  * ESP8266 MQTT Umbrella to indicate the chance of rain for Home Assistant.
  */
 
- #include "FastLED.h" // FastLED library: https://github.com/FastLED/FastLED
- #if FASTLED_VERSION < 3001000
- #error "Requires FastLED 3.1 or later; check github for latest code."
- #endif
+#include "FastLED.h" // FastLED library: https://github.com/FastLED/FastLED
+#if FASTLED_VERSION < 3001000
+#error "Requires FastLED 3.1 or later; check github for latest code."
+#endif
 
 // Set configuration options for pins, WiFi, and MQTT in the following file:
 #include "config.h"
@@ -18,30 +18,30 @@ Servo servo;
 #include <PubSubClient.h>
 
 // Bring in the config.h options
-const bool debug_mode = CONFIG_DEBUG;
+const bool debugMode = CONFIG_DEBUG;
 
 const int servoPin = CONFIG_PIN_SERVO;
-const int txPin = BUILTIN_LED; // On-board blue LED
 const int ledPin = CONFIG_PIN_LED;
 
 const int fadeSpeed = CONFIG_FADE_SPEED;
 const int maxBrightness = 255;
 const int numLEDs = CONFIG_NUM_LEDS;
-const int ledOffset = 3; // Move the center by this many places. Useful if the ring isn't oriented correctly.
+const int ledOffset = CONFIG_LED_OFFSET;
 
 const int servoDown = CONFIG_SERVO_DOWN;
 const int servoUp = CONFIG_SERVO_UP;
-const int servoDetachDelay = 1000; // in MS
+const int servoDetachDelay = CONFIG_SERVO_DETACH_TIME;
 
 const char* ssid = CONFIG_WIFI_SSID;
 const char* password = CONFIG_WIFI_PASS;
 
-const char* mqtt_server = CONFIG_MQTT_HOST;
-const char* mqtt_username = CONFIG_MQTT_USER;
-const char* mqtt_password = CONFIG_MQTT_PASS;
-const char* client_id = CONFIG_MQTT_CLIENT_ID;
+const char* mqttServer = CONFIG_MQTT_HOST;
+const int mqttPort = CONFIG_MQTT_PORT;
+const char* mqttUsername = CONFIG_MQTT_USER;
+const char* mqttPassword = CONFIG_MQTT_PASS;
+const char* mqttClientId = CONFIG_MQTT_CLIENT_ID;
 
-const char* mqtt_topic = CONFIG_MQTT_TOPIC;
+const char* mqttTopic = CONFIG_MQTT_TOPIC;
 
 // Globals
 String payloadString = "";
@@ -56,17 +56,20 @@ bool dripRight = true;
 #define h0 4 // Starting height, in meters, of the drip
 long lastDripStart; // millis() the last drip started falling
 long servoAttachTime;
+bool servoAttached = false;
 
 WiFiClient espClient;
 PubSubClient client(espClient);
 
 void setup() {
-  // pinMode(txPin, OUTPUT);
-  // digitalWrite(txPin, HIGH); // Turn off the on-board LED
+  if (debugMode) {
+    Serial.begin(115200);
+  }
 
-  delay(1000);
+  setupWifi();
 
   servo.attach(servoPin);
+  servoAttached = true;
   servo.write(servoDown);
 
   LEDS.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(TypicalLEDStrip);
@@ -74,19 +77,11 @@ void setup() {
   FastLED.setBrightness(maxBrightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
 
-  if (debug_mode) {
-    Serial.begin(115200);
-  }
-
-  setup_wifi();
-  client.setServer(mqtt_server, 1883);
+  client.setServer(mqttServer, mqttPort);
   client.setCallback(callback);
 }
 
-void setup_wifi() {
-  delay(10);
-  // We start by connecting to a WiFi network
-  Serial.println();
+void setupWifi() {
   Serial.print("Connecting to ");
   Serial.println(ssid);
 
@@ -98,9 +93,7 @@ void setup_wifi() {
     Serial.print(".");
   }
 
-  Serial.println("");
-  Serial.println("WiFi connected");
-  Serial.println("IP address: ");
+  Serial.print("WiFi connected. IP address: ");
   Serial.println(WiFi.localIP());
 }
 
@@ -110,6 +103,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.print("] ");
 
   servo.attach(servoPin);
+  servoAttached = true;
 
   for (int i = 0; i < length; i++) {
     if (isDigit(payload[i])) {
@@ -123,7 +117,6 @@ void callback(char* topic, byte* payload, unsigned int length) {
   int scaled = map(newValue, 0, 100, servoDown, servoUp);
   servo.write(scaled);
   servoAttachTime = millis();
-  // servo.write(newValue);
   Serial.println(scaled);
 }
 
@@ -132,9 +125,9 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect(client_id, mqtt_username, mqtt_password)) {
+    if (client.connect(mqttClientId, mqttUsername, mqttPassword)) {
       Serial.println("connected");
-      client.subscribe(mqtt_topic);
+      client.subscribe(mqttTopic);
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
@@ -157,7 +150,8 @@ void loop() {
   }
 
   // Turn off the servo after a short time. Otherwise, the cheap servo buzzes.
-  if (millis() - servoAttachTime > servoDetachDelay) {
+  if ((servoDetachDelay >= 0) && (servoAttached) && (millis() - servoAttachTime > servoDetachDelay)) {
+    servoAttached = false;
     servo.detach();
   }
 }

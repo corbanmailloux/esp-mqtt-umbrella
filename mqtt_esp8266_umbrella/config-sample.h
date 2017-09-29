@@ -6,11 +6,24 @@
  */
 
 // Pins
-#define CONFIG_PIN_SERVO D4
+#define CONFIG_PIN_SERVO D2
+#define CONFIG_PIN_LED D1
 
-// Servo angles
-#define CONFIG_SERVO_DOWN 100
-#define CONFIG_SERVO_UP 150
+// Servo
+#define CONFIG_SERVO_DOWN 8
+#define CONFIG_SERVO_UP 73
+// After setting the servo angle, how long to wait before detaching it in milliseconds.
+// Set to -1 to leave the servo attached at all times.
+#define CONFIG_SERVO_DETACH_TIME 1000
+
+// FastLED configuration
+#define CONFIG_COLOR_ORDER GRB
+#define CONFIG_LED_TYPE WS2812B
+#define CONFIG_NUM_LEDS 16
+#define CONFIG_FADE_SPEED 80 // How fast should the trail fade out? 1=slow, 255=fast
+// Move the center of the animation by this many places. Useful if the ring isn't oriented correctly.
+// Set to 0 to disable the offset.
+#define CONFIG_LED_OFFSET 0
 
 // WiFi
 #define CONFIG_WIFI_SSID "{WIFI-SSID}"
@@ -18,6 +31,7 @@
 
 // MQTT
 #define CONFIG_MQTT_HOST "{MQTT-SERVER}"
+#define CONFIG_MQTT_PORT 1883 // Usually 1883
 #define CONFIG_MQTT_USER "{MQTT-USERNAME}"
 #define CONFIG_MQTT_PASS "{MQTT-PASSWORD}"
 

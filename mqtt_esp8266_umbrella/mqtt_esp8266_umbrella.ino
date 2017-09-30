@@ -52,14 +52,9 @@ const CRGBPalette16 palette = CRGBPalette16(
 );
 
 // Globals
-String payloadString = "";
 struct CRGB leds[numLEDs];
-int colorIndex[2];
-bool dripping[2] = {false, false};
-
 #define GRAVITY 9.81 // Acceleration of gravity in m/s^2
 #define h0 3 // Starting height, in meters, of the drip
-long lastDripStart[2]; // millis() the last drip started falling
 #define LEFT 0
 #define RIGHT 1
 
@@ -109,6 +104,7 @@ void setupWifi() {
 }
 
 void callback(char* topic, byte* payload, unsigned int length) {
+  static String payloadString = "";
   Serial.print("Message arrived [");
   Serial.print(topic);
   Serial.print("] ");
@@ -170,7 +166,11 @@ void loop() {
 // 0 == left, 1 == right
 // Returns true if the drip is still falling, and false if it's done.
 void raindrop_side(byte side) {
-  const int numSideLed = 8;
+  // Set up persistent variables. These are only evaluated the first time.
+  static const int numSideLed = 8;
+  static int colorIndex[2];
+  static bool dripping[2] = {false, false};
+  static long lastDripStart[2]; // millis() the last drip started falling
 
   if (!dripping[side]) {
     // Delay some time before a new drip

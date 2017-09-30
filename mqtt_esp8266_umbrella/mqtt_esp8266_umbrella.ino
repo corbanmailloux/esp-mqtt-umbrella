@@ -43,16 +43,22 @@ const char* mqttClientId = CONFIG_MQTT_CLIENT_ID;
 
 const char* mqttTopic = CONFIG_MQTT_TOPIC;
 
+// Color palette
+const CRGBPalette16 palette = CRGBPalette16(
+  CRGB::White, CRGB(0,18,109), CRGB(161,219,236), CRGB(220,240,247),
+  CRGB(12,194,221), CRGB(48,146,206), CRGB(0,83,146), CRGB(223,239,240),
+  CRGB::White, CRGB(0,18,109), CRGB(161,219,236), CRGB(220,240,247),
+  CRGB(12,194,221), CRGB(48,146,206), CRGB(0,83,146), CRGB(223,239,240)
+);
+
 // Globals
 String payloadString = "";
 struct CRGB leds[numLEDs];
-// Color palette
-CRGBPalette16 currentPalette = OceanColors_p;
 int colorIndex[2];
 bool dripping[2] = {false, false};
 
 #define GRAVITY 9.81 // Acceleration of gravity in m/s^2
-#define h0 4 // Starting height, in meters, of the drip
+#define h0 3 // Starting height, in meters, of the drip
 long lastDripStart[2]; // millis() the last drip started falling
 #define LEFT 0
 #define RIGHT 1
@@ -74,7 +80,10 @@ void setup() {
   servoAttached = true;
   servo.write(servoDown);
 
-  LEDS.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(TypicalLEDStrip);
+  // Drop the brighness of the red and green to make up for blue.
+  // This makes it very dim and the blue still doesn't really come through.
+  // TODO: Revisit this.
+  LEDS.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(0x1177FF);
 
   FastLED.setBrightness(maxBrightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
@@ -160,8 +169,21 @@ void loop() {
 
 // 0 == left, 1 == right
 // Returns true if the drip is still falling, and false if it's done.
-bool raindrop_side(byte side) {
-  const int numSideLed = 9;
+void raindrop_side(byte side) {
+  const int numSideLed = 8;
+
+  if (!dripping[side]) {
+    // Delay some time before a new drip
+    if (randBool()) {
+      // Reset the values for the next drip
+      colorIndex[side] = random8();
+      lastDripStart[side] = millis();
+      dripping[side] = true;
+    } else {
+      return;
+    }
+  }
+
   long tCycle = millis() - lastDripStart[side];
 
   // Calculate positon as a function of time and acceleration (gravity)
@@ -169,74 +191,28 @@ bool raindrop_side(byte side) {
   int pos = round(h * (numSideLed - 1) / h0); // Map "h" to a "pos" integer index position on the LED strip
   // TODO: Couldn't this just use the built-in `map` function?
 
-  if (pos >= numSideLed + (numSideLed / 3) || pos < 0) {
-    // Reset the values for the next drip
-    colorIndex[side] = random8();
-    lastDripStart[side] = millis();
-    return false;
-  } else if (pos >= numSideLed) {
-    // Let's overshoot a bit (to let the lights fade)
-    return true;
+  if (pos >= numSideLed) {
+    dripping[side] = false;
+    return;
   }
 
   float calcBrightnes = 255.0 / pos; // Drop off the brightness
   int ledIndex;
   if (side == LEFT) {
-    ledIndex = numLEDs - pos;
+    ledIndex = numLEDs - pos - 1; // -1 to separate the sides at the top
   } else {
     ledIndex = numLEDs + pos;
   }
 
-  leds[(ledIndex + ledOffset) % numLEDs] += ColorFromPalette(currentPalette, colorIndex[side], calcBrightnes, LINEARBLEND);
-  return true;
+  leds[(ledIndex + ledOffset) % numLEDs] += ColorFromPalette(palette, colorIndex[side], calcBrightnes, LINEARBLEND);
 }
 
 void raindrops() {
   fadeToBlackBy(leds, numLEDs, fadeSpeed); // 8 bit, 1 = slow, 255 = fast
-
-  dripping[LEFT] = raindrop_side(LEFT);
-  dripping[RIGHT] = raindrop_side(RIGHT);
-
-  // TODO: This is currently handled in the raindrop_side function.
-  // if (!dripping[LEFT]) {
-  //   colorIndex[LEFT] = random8();
-  //   lastDripStart[LEFT] = millis();
-  // }
-  // if (!dripping[RIGHT]) {
-  //   colorIndex[RIGHT] = random8();
-  //   lastDripStart[RIGHT] = millis();
-  // }
-
-  // long tCycle = millis() - lastDripStart;
-  //
-  // // A little kinematics equation calculates positon as a function of time and acceleration (gravity)
-  // float h = 0.5 * GRAVITY * pow(tCycle/1000.0, 2.0);
-  // int pos = round(h * (numSideLed - 1) / h0); // Map "h" to a "pos" integer index position on the LED strip
-  //
-  // if (pos >= numSideLed + (numSideLed / 3) || pos < 0) {
-  //   // Reset the values for the next drip
-  //   colorIndex = random8();
-  //   dripLeft = randBool();
-  //   dripRight = randBool();
-  //   delay(random(30, 150));
-  //   lastDripStart = millis();
-  //   return;
-  // } else if (pos >= numSideLed) {
-  //   // Let's overshoot a bit (to let the lights fade)
-  //   return;
-  // }
-  //
-  // float calcBrightnes = 255.0 / pos; // Drop off the brightness
-  //
-  // if (dripLeft) {
-  //   leds[(numLEDs - pos + ledOffset) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
-  // }
-  //
-  // if (dripRight) {
-  //   leds[(numLEDs + pos + ledOffset) % numLEDs] += ColorFromPalette(currentPalette, colorIndex, calcBrightnes, LINEARBLEND);
-  // }
+  raindrop_side(LEFT);
+  raindrop_side(RIGHT);
 }
 
 bool randBool() {
-  return (random(10) < 5); // 5 is 50-50
+  return (random(100) < 4);
 }

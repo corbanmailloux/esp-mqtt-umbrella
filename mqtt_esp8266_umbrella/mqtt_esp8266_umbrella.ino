@@ -52,9 +52,8 @@ const CRGBPalette16 palette = CRGBPalette16(
 );
 
 // Globals
-struct CRGB leds[numLEDs];
+CRGBArray<numLEDs> leds;
 #define GRAVITY 9.81 // Acceleration of gravity in m/s^2
-#define h0 3 // Starting height, in meters, of the drip
 #define LEFT 0
 #define RIGHT 1
 
@@ -78,7 +77,7 @@ void setup() {
   // Drop the brighness of the red and green to make up for blue.
   // This makes it very dim and the blue still doesn't really come through.
   // TODO: Revisit this.
-  LEDS.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(0x1177FF);
+  FastLED.addLeds<CONFIG_LED_TYPE, ledPin, CONFIG_COLOR_ORDER>(leds, numLEDs).setCorrection(0x1177FF);
 
   FastLED.setBrightness(maxBrightness);
   FastLED.setMaxPowerInVoltsAndMilliamps(5, 500);
@@ -152,7 +151,8 @@ void loop() {
   client.loop();
 
   EVERY_N_MILLISECONDS(30) { // Non-blocking rate-limiting for the updates.
-    raindrops();
+    raindrop_side(LEFT);
+    raindrop_side(RIGHT);
     FastLED.show();
   }
 
@@ -167,14 +167,35 @@ void loop() {
 // Returns true if the drip is still falling, and false if it's done.
 void raindrop_side(byte side) {
   // Set up persistent variables. These are only evaluated the first time.
-  static const int numSideLed = 8;
-  static int colorIndex[2];
+  static const uint8_t numSideLed = 8;
+  static const uint8_t lowerBoundRightSide = (ledOffset) % numLEDs;
+  static const uint8_t upperBoundRightSide = (lowerBoundRightSide + numSideLed - 1) % numLEDs;
+  static const uint8_t lowerBoundLeftSide = (upperBoundRightSide + 1) % numLEDs;
+  static const uint8_t upperBoundLeftSide = (lowerBoundLeftSide + numSideLed - 1) % numLEDs;
+
+  if (side == LEFT) {
+    if (upperBoundLeftSide < lowerBoundLeftSide) {
+      leds(lowerBoundLeftSide, numLEDs - 1).fadeToBlackBy(fadeSpeed);
+      leds(0, upperBoundLeftSide).fadeToBlackBy(fadeSpeed);
+    } else {
+      leds(lowerBoundLeftSide, upperBoundLeftSide).fadeToBlackBy(fadeSpeed);
+    }
+  } else {
+    if (upperBoundRightSide < lowerBoundRightSide) {
+      leds(lowerBoundRightSide, numLEDs - 1).fadeToBlackBy(fadeSpeed);
+      leds(0, upperBoundRightSide).fadeToBlackBy(fadeSpeed);
+    } else {
+      leds(lowerBoundRightSide, upperBoundRightSide).fadeToBlackBy(fadeSpeed);
+    }
+  }
+
+  static uint8_t  colorIndex[2];
   static bool dripping[2] = {false, false};
   static long lastDripStart[2]; // millis() the last drip started falling
 
   if (!dripping[side]) {
     // Delay some time before a new drip
-    if (randBool()) {
+    if (randBool(5)) {
       // Reset the values for the next drip
       colorIndex[side] = random8();
       lastDripStart[side] = millis();
@@ -187,16 +208,13 @@ void raindrop_side(byte side) {
   long tCycle = millis() - lastDripStart[side];
 
   // Calculate positon as a function of time and acceleration (gravity)
-  float h = 0.5 * GRAVITY * pow(tCycle/1000.0, 2.0);
-  int pos = round(h * (numSideLed - 1) / h0); // Map "h" to a "pos" integer index position on the LED strip
-  // TODO: Couldn't this just use the built-in `map` function?
+  int pos = round(0.5 * GRAVITY * pow(tCycle/1000.0, 2.0)); // Rounding to an int gives us an index.
 
   if (pos >= numSideLed) {
     dripping[side] = false;
     return;
   }
 
-  float calcBrightnes = 255.0 / pos; // Drop off the brightness
   int ledIndex;
   if (side == LEFT) {
     ledIndex = numLEDs - pos - 1; // -1 to separate the sides at the top
@@ -204,15 +222,9 @@ void raindrop_side(byte side) {
     ledIndex = numLEDs + pos;
   }
 
-  leds[(ledIndex + ledOffset) % numLEDs] += ColorFromPalette(palette, colorIndex[side], calcBrightnes, LINEARBLEND);
+  leds[(ledIndex + ledOffset) % numLEDs] += ColorFromPalette(palette, colorIndex[side]).fadeToBlackBy(map(pos, 0, numSideLed, 0, 200));
 }
 
-void raindrops() {
-  fadeToBlackBy(leds, numLEDs, fadeSpeed); // 8 bit, 1 = slow, 255 = fast
-  raindrop_side(LEFT);
-  raindrop_side(RIGHT);
-}
-
-bool randBool() {
-  return (random(100) < 4);
+bool randBool(uint8_t percent) {
+  return (random(100) < percent);
 }
